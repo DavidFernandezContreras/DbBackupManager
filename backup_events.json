@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "bbd52b2f-004a-406b-8848-7af685b0389c",
+    "StartedAt": "2026-04-28T21:06:43.8680479Z",
+    "CompletedAt": "2026-04-28T21:06:44.0973199Z",
+    "Success": false,
+    "ErrorMessage": "An error occurred trying to start process \u0027pg_dump\u0027 with working directory \u0027C:\\Users\\DavidFern\u00E1ndez\\source\\repos\\DbBackupManager\u0027. The system cannot find the file specified.",
+    "IsManual": true,
+    "SourceDatabase": "localhost/HouseholdAccounting",
+    "DestinationDatabase": "localhost/Backup",
+    "Duration": "00:00:00.2292720"
+  }
+]

@@ -1,0 +1,267 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+
+    string DotClass(bool connected) => connected ? "dot dot-connected" : "dot dot-disconnected";
+    string StatusText(bool connected) => connected ? "Connected" : "Disconnected";
+}
+
+@if (!string.IsNullOrEmpty(Model.Message))
+{
+    <div class="alert alert-@Model.MessageType alert-dismissible fade show" role="alert">
+        @Model.Message
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}
+
+<!-- Status row -->
+<div class="row g-3 mb-4">
+
+    <!-- Source DB -->
+    <div class="col-sm-6 col-lg-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <p class="text-muted small mb-1 text-uppercase fw-semibold">Source Database</p>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="@DotClass(Model.Connectivity.SourceConnected)" id="source-dot"></span>
+                    <span class="fw-semibold" id="source-status">@StatusText(Model.Connectivity.SourceConnected)</span>
+                </div>
+                <p class="font-monospace small text-muted mb-0">@Model.Connectivity.SourceLabel</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Destination DB -->
+    <div class="col-sm-6 col-lg-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <p class="text-muted small mb-1 text-uppercase fw-semibold">Destination Database</p>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="@DotClass(Model.Connectivity.DestinationConnected)" id="dest-dot"></span>
+                    <span class="fw-semibold" id="dest-status">@StatusText(Model.Connectivity.DestinationConnected)</span>
+                </div>
+                <p class="font-monospace small text-muted mb-0">@Model.Connectivity.DestinationLabel</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedule info -->
+    <div class="col-sm-12 col-lg-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-body">
+                <p class="text-muted small mb-1 text-uppercase fw-semibold">Next Scheduled Run</p>
+                <p class="fw-semibold mb-1" id="next-run">
+                    @(Model.NextScheduledRun.HasValue
+                        ? Model.NextScheduledRun.Value.ToLocalTime().ToString("g")
+                        : "Calculating…")
+                </p>
+                @if (Model.IsRunning)
+                {
+                    <span class="badge bg-warning text-dark" id="running-badge">
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>Running…
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary d-none" id="running-badge">
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>Running…
+                    </span>
+                }
+                <p class="small text-muted mt-2 mb-0">
+                    Connectivity checked: <span id="last-checked">
+                        @(Model.Connectivity.LastChecked.HasValue
+                            ? Model.Connectivity.LastChecked.Value.ToLocalTime().ToString("T")
+                            : "pending…")
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Manual trigger -->
+<div class="mb-4">
+    <form method="post" asp-action="TriggerNow">
+        <button type="submit" class="btn btn-warning px-4" id="trigger-btn"
+                @(Model.IsRunning ? "disabled" : "")>
+            <i class="bi bi-play-fill me-1"></i>Run Backup &amp; Restore Now
+        </button>
+        @if (Model.IsRunning)
+        {
+            <span class="ms-3 text-muted fst-italic small">Operation in progress — refresh the page to see the result.</span>
+        }
+    </form>
+</div>
+
+<!-- Event history -->
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center py-3">
+        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Backup &amp; Restore History</h5>
+        <span class="badge bg-secondary rounded-pill">@Model.Events.Count</span>
+    </div>
+
+    @if (!Model.Events.Any())
+    {
+        <div class="card-body text-center text-muted py-5">
+            <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+            No backup operations have been recorded yet.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Status</th>
+                        <th>Started</th>
+                        <th>Completed</th>
+                        <th>Duration</th>
+                        <th>Trigger</th>
+                        <th>Source</th>
+                        <th>Destination</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var evt in Model.Events)
+                    {
+                        <tr>
+                            <td>
+                                @if (evt.Success)
+                                {
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                        <i class="bi bi-check-circle-fill me-1"></i>Success
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
+                                        <i class="bi bi-x-circle-fill me-1"></i>Failed
+                                    </span>
+                                }
+                            </td>
+                            <td><small>@evt.StartedAt.ToLocalTime().ToString("g")</small></td>
+                            <td>
+                                <small>
+                                    @(evt.CompletedAt.HasValue
+                                        ? evt.CompletedAt.Value.ToLocalTime().ToString("T")
+                                        : "—")
+                                </small>
+                            </td>
+                            <td>
+                                <small>
+                                    @if (evt.Duration.HasValue)
+                                    {
+                                        var d = evt.Duration.Value;
+                                        @(d.TotalMinutes >= 1
+                                            ? $"{(int)d.TotalMinutes}m {d.Seconds}s"
+                                            : $"{d.Seconds}s")
+                                    }
+                                    else
+                                    {
+                                        <span>—</span>
+                                    }
+                                </small>
+                            </td>
+                            <td>
+                                @if (evt.IsManual)
+                                {
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Manual</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Scheduled</span>
+                                }
+                            </td>
+                            <td><small class="font-monospace text-muted">@evt.SourceDatabase</small></td>
+                            <td><small class="font-monospace text-muted">@evt.DestinationDatabase</small></td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(evt.ErrorMessage))
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-danger"
+                                            data-bs-toggle="popover"
+                                            data-bs-trigger="focus"
+                                            data-bs-placement="left"
+                                            data-bs-content="@evt.ErrorMessage"
+                                            title="Error details">
+                                        <i class="bi bi-exclamation-circle"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    // Init popovers
+    document.querySelectorAll('[data-bs-toggle="popover"]').forEach(el => {
+        new bootstrap.Popover(el);
+    });
+
+    const sourceConnectedInit = @(Model.Connectivity.SourceConnected ? "true" : "false");
+    const destConnectedInit   = @(Model.Connectivity.DestinationConnected ? "true" : "false");
+
+    function applyDot(id, connected) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.className = connected ? 'dot dot-connected' : 'dot dot-disconnected';
+    }
+
+    applyDot('source-dot', sourceConnectedInit);
+    applyDot('dest-dot',   destConnectedInit);
+
+    async function pollStatus() {
+        try {
+            const res = await fetch('/api/status');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // Connectivity dots
+            applyDot('source-dot', data.sourceConnected);
+            applyDot('dest-dot',   data.destinationConnected);
+            document.getElementById('source-status').textContent =
+                data.sourceConnected ? 'Connected' : 'Disconnected';
+            document.getElementById('dest-status').textContent =
+                data.destinationConnected ? 'Connected' : 'Disconnected';
+
+            // Last checked
+            if (data.lastChecked) {
+                const d = new Date(data.lastChecked);
+                document.getElementById('last-checked').textContent = d.toLocaleTimeString();
+            }
+
+            // Next scheduled run
+            if (data.nextScheduledRun) {
+                const d = new Date(data.nextScheduledRun);
+                document.getElementById('next-run').textContent =
+                    d.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+            }
+
+            // Running state
+            const badge  = document.getElementById('running-badge');
+            const btn    = document.getElementById('trigger-btn');
+            if (data.isRunning) {
+                badge.classList.remove('d-none');
+                badge.classList.add('bg-warning', 'text-dark');
+                badge.classList.remove('bg-secondary');
+                btn.disabled = true;
+            } else {
+                badge.classList.add('d-none');
+                btn.disabled = false;
+            }
+        } catch (e) {
+            console.warn('Status poll failed:', e);
+        }
+    }
+
+    setInterval(pollStatus, 30_000);
+})();
+</script>
+}
