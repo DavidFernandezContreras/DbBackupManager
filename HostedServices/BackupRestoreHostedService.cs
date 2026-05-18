@@ -24,26 +24,35 @@ public class BackupRestoreHostedService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        if (_options.GetScheduleTimeSpan() != TimeSpan.Zero)
         {
-            var nextRun = CalculateNextRun(_options.GetScheduleTimeSpan());
-            _state.NextScheduledRun = nextRun;
-
-            _logger.LogInformation("Next backup scheduled at {NextRun:g} (local)", nextRun.ToLocalTime());
-
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await Task.Delay(nextRun - DateTime.UtcNow, stoppingToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
+                var nextRun = CalculateNextRun(_options.GetScheduleTimeSpan());
+                _state.NextScheduledRun = nextRun;
 
-            if (stoppingToken.IsCancellationRequested)
-                break;
+                _logger.LogInformation("Next backup scheduled at {NextRun:g} (local)", nextRun.ToLocalTime());
 
-            await _executor.TryRunAsync(isManual: false, stoppingToken);
+                try
+                {
+                    await Task.Delay(nextRun - DateTime.UtcNow, stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                if (stoppingToken.IsCancellationRequested)
+                    break;
+
+                await _executor.TryRunAsync(isManual: false, stoppingToken);
+            }
+        }
+        else
+        {
+            _logger.LogInformation("Scheduled backup is disabled (ScheduleTime=00:00:00)");
+            await Task.Delay(Timeout.Infinite, stoppingToken).ConfigureAwait(false);
+            return;
         }
     }
 
